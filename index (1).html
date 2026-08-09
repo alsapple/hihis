@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>날씨</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#0A1220;
+    --bg-1:#111C33;
+    --panel:#16213F;
+    --panel-edge:#25335A;
+    --text-hi:#EFF3FB;
+    --text-mid:#9FB0D3;
+    --text-lo:#5D6B8E;
+    --cyan:#57D6E8;
+    --rose:#EA6E6E;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    background:
+      radial-gradient(ellipse 900px 600px at 20% 0%, #1B2A52 0%, transparent 60%),
+      radial-gradient(ellipse 800px 600px at 100% 100%, #1A2444 0%, transparent 55%),
+      linear-gradient(180deg, var(--bg-0), var(--bg-1) 60%, var(--bg-0));
+    color:var(--text-hi);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:24px;
+    text-align:center;
+  }
+
+  .loc{
+    font-family:'IBM Plex Mono',monospace; font-size:13px; letter-spacing:.08em;
+    color:var(--text-lo); text-transform:uppercase; margin-bottom:18px;
+    display:flex; align-items:center; gap:8px;
+  }
+
+  .icon{font-size:min(28vw,140px); line-height:1;}
+
+  .temp{
+    font-family:'Space Grotesk',sans-serif; font-weight:700;
+    font-size:min(30vw,180px); line-height:0.95; letter-spacing:-0.03em;
+    margin:8px 0 4px;
+  }
+  .temp span{font-size:0.35em; color:var(--text-mid); font-weight:500; vertical-align:top;}
+
+  .desc{
+    font-family:'Space Grotesk',sans-serif; font-weight:500;
+    font-size:min(7vw,34px); color:var(--text-mid); margin-bottom:28px;
+  }
+
+  select{
+    background:var(--panel); color:var(--text-hi);
+    border:1px solid var(--panel-edge); border-radius:10px;
+    padding:10px 16px; font-family:'Inter',sans-serif; font-size:14px;
+    outline:none; cursor:pointer; margin-bottom:10px;
+  }
+  select:focus-visible{outline:2px solid var(--cyan); outline-offset:2px;}
+
+  .row{display:flex; gap:8px; flex-wrap:wrap; justify-content:center;}
+  .btn{
+    background:transparent; color:var(--text-mid);
+    border:1px solid var(--panel-edge); border-radius:10px;
+    padding:9px 16px; font-family:'Inter',sans-serif; font-size:13.5px;
+    cursor:pointer;
+  }
+  .btn:hover{border-color:var(--cyan); color:var(--text-hi);}
+  .btn:focus-visible{outline:2px solid var(--cyan); outline-offset:2px;}
+
+  .status{
+    font-family:'IBM Plex Mono',monospace; font-size:14px; color:var(--text-mid);
+    margin-top:14px; max-width:340px; line-height:1.6;
+  }
+  .status.err{color:var(--rose); font-weight:500;}
+</style>
+</head>
+<body>
+
+  <div class="loc" id="loc-name">불러오는 중...</div>
+  <div class="icon" id="icon">🌤️</div>
+  <div class="temp" id="temp">--<span>°C</span></div>
+  <div class="desc" id="desc">-</div>
+
+  <select id="region-select"></select>
+  <div class="row">
+    <button class="btn" id="gps-btn">📍 내 위치</button>
+    <button class="btn" id="refresh-btn">새로고침</button>
+    <button class="btn" id="popup-btn">🗗 새 창으로 띄우기</button>
+  </div>
+  <div class="status" id="status"></div>
+
+<script>
+const SERVICE_KEY = "tGMuabKhkbKLnzpM8CFURLyFrL1TIFdqHd7kl2nFTjvD8RsI3oX+DQ6wec54tPtF4ScdBDivxovt9aSlNiBA9A==";
+const BASE = "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0";
+const CORS_PROXIES = [
+  (u) => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(u),
+  (u) => "https://corsproxy.io/?url=" + encodeURIComponent(u),
+  (u) => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
+];
+
+const REGIONS = [
+  { name: "서울", nx: 60, ny: 127 },
+  { name: "부산", nx: 98, ny: 76 },
+  { name: "대구", nx: 89, ny: 90 },
+  { name: "인천", nx: 55, ny: 124 },
+  { name: "광주", nx: 58, ny: 74 },
+  { name: "대전", nx: 67, ny: 100 },
+  { name: "울산", nx: 102, ny: 84 },
+  { name: "세종", nx: 66, ny: 103 },
+  { name: "수원", nx: 60, ny: 121 },
+  { name: "고양", nx: 57, ny: 128 },
+  { name: "용인", nx: 64, ny: 119 },
+  { name: "천안", nx: 63, ny: 110 },
+  { name: "춘천", nx: 73, ny: 134 },
+  { name: "원주", nx: 76, ny: 122 },
+  { name: "강릉", nx: 92, ny: 131 },
+  { name: "청주", nx: 69, ny: 106 },
+  { name: "전주", nx: 63, ny: 89 },
+  { name: "군산", nx: 56, ny: 92 },
+  { name: "목포", nx: 50, ny: 67 },
+  { name: "여수", nx: 73, ny: 66 },
+  { name: "포항", nx: 102, ny: 94 },
+  { name: "경주", nx: 100, ny: 91 },
+  { name: "안동", nx: 91, ny: 106 },
+  { name: "창원", nx: 91, ny: 77 },
+  { name: "진주", nx: 81, ny: 75 },
+  { name: "김해", nx: 95, ny: 77 },
+  { name: "제주", nx: 52, ny: 38 },
+  { name: "서귀포", nx: 52, ny: 33 },
+];
+
+const select = document.getElementById("region-select");
+REGIONS.forEach((r, i) => {
+  const opt = document.createElement("option");
+  opt.value = i;
+  opt.textContent = r.name;
+  select.appendChild(opt);
+});
+select.value = 0;
+let currentRegion = REGIONS[0];
+
+const urlParams = new URLSearchParams(window.location.search);
+const isLocked = urlParams.has("nx") && urlParams.has("ny");
+if (isLocked){
+  currentRegion = {
+    name: urlParams.get("name") || "선택 지역",
+    nx: Number(urlParams.get("nx")),
+    ny: Number(urlParams.get("ny"))
+  };
+  document.getElementById("region-select").style.display = "none";
+  document.getElementById("gps-btn").style.display = "none";
+  document.getElementById("popup-btn").style.display = "none";
+  setInterval(loadWeather, 10 * 60 * 1000); // 10분마다 자동 새로고침
+}
+
+document.getElementById("popup-btn").addEventListener("click", () => {
+  const r = currentRegion;
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.searchParams.set("name", r.name);
+  url.searchParams.set("nx", r.nx);
+  url.searchParams.set("ny", r.ny);
+  window.open(url.toString(), "_blank");
+});
+
+function pad(n){ return String(n).padStart(2, "0"); }
+function fmtDate(d){ return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`; }
+
+function getNcstBaseTime(){
+  const now = new Date();
+  const d = new Date(now);
+  if (now.getMinutes() < 45) d.setHours(d.getHours() - 1);
+  return { base_date: fmtDate(d), base_time: pad(d.getHours()) + "00" };
+}
+
+function getVilageBaseTime(){
+  const slots = [2,5,8,11,14,17,20,23];
+  const now = new Date();
+  const d = new Date(now);
+  let hour = now.getHours(), minute = now.getMinutes();
+  let candidates = slots.filter(h => h < hour || (h === hour && minute >= 15));
+  if (candidates.length === 0){
+    d.setDate(d.getDate() - 1);
+    return { base_date: fmtDate(d), base_time: "2300" };
+  }
+  return { base_date: fmtDate(d), base_time: pad(Math.max(...candidates)) + "00" };
+}
+
+async function callApi(path, params){
+  const url = new URL(`${BASE}/${path}`);
+  url.searchParams.set("serviceKey", SERVICE_KEY);
+  url.searchParams.set("dataType", "JSON");
+  url.searchParams.set("pageNo", "1");
+  Object.entries(params).forEach(([k,v]) => url.searchParams.set(k, v));
+
+  let lastErr;
+  for (const buildProxyUrl of CORS_PROXIES){
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 6000);
+      let res;
+      try {
+        res = await fetch(buildProxyUrl(url.toString()), { signal: controller.signal });
+      } finally {
+        clearTimeout(timeout);
+      }
+      if (!res.ok) { lastErr = new Error(`프록시 응답 오류 (HTTP ${res.status})`); continue; }
+      const text = await res.text();
+      let json;
+      try { json = JSON.parse(text); }
+      catch(e){ lastErr = new Error("응답이 JSON이 아님 (프록시 또는 키 문제)"); continue; }
+      const header = json?.response?.header;
+      if (!header || header.resultCode !== "00"){
+        throw new Error(header ? `기상청 API 오류: ${header.resultMsg} (코드 ${header.resultCode})` : "알 수 없는 응답 형식");
+      }
+      const items = json.response.body?.items?.item;
+      if (!items || items.length === 0){
+        throw new Error("해당 시간대 관측 자료가 없습니다");
+      }
+      return items;
+    } catch(e){
+      lastErr = e;
+      // 기상청 API 자체 오류(코드 있음)는 프록시를 더 시도해도 소용없으니 바로 던짐
+      if (e.message.startsWith("기상청 API 오류") || e.message.startsWith("해당 시간대")) throw e;
+    }
+  }
+  throw lastErr || new Error("모든 프록시 요청이 실패했습니다");
+}
+
+function skyIcon(sky, pty){
+  pty = Number(pty); sky = Number(sky);
+  if (pty === 1 || pty === 5) return "🌧️";
+  if (pty === 2 || pty === 6) return "🌨️";
+  if (pty === 3 || pty === 7) return "❄️";
+  if (pty === 4) return "⛈️";
+  if (sky === 1) return "☀️";
+  if (sky === 3) return "⛅";
+  if (sky === 4) return "☁️";
+  return "🌤️";
+}
+function skyDesc(sky, pty){
+  pty = Number(pty); sky = Number(sky);
+  if (pty === 1) return "비";
+  if (pty === 2) return "비/눈";
+  if (pty === 3) return "눈";
+  if (pty === 4) return "소나기";
+  if (pty === 5) return "빗방울";
+  if (pty === 6) return "빗방울날림";
+  if (pty === 7) return "눈날림";
+  if (sky === 1) return "맑음";
+  if (sky === 3) return "구름많음";
+  if (sky === 4) return "흐림";
+  return "-";
+}
+
+function latLonToGrid(lat, lon){
+  const RE = 6371.00877, GRID = 5.0, SLAT1 = 30.0, SLAT2 = 60.0, OLON = 126.0, OLAT = 38.0, XO = 43, YO = 136;
+  const DEGRAD = Math.PI / 180.0;
+  const re = RE / GRID;
+  const slat1 = SLAT1 * DEGRAD, slat2 = SLAT2 * DEGRAD;
+  const olon = OLON * DEGRAD, olat = OLAT * DEGRAD;
+  let sn = Math.tan(Math.PI*0.25 + slat2*0.5) / Math.tan(Math.PI*0.25 + slat1*0.5);
+  sn = Math.log(Math.cos(slat1)/Math.cos(slat2)) / Math.log(sn);
+  let sf = Math.tan(Math.PI*0.25 + slat1*0.5);
+  sf = Math.pow(sf, sn) * Math.cos(slat1) / sn;
+  let ro = Math.tan(Math.PI*0.25 + olat*0.5);
+  ro = re * sf / Math.pow(ro, sn);
+  const rlat = lat * DEGRAD;
+  let ra = Math.tan(Math.PI*0.25 + rlat*0.5);
+  ra = re * sf / Math.pow(ra, sn);
+  let theta = lon*DEGRAD - olon;
+  if (theta > Math.PI) theta -= 2.0*Math.PI;
+  if (theta < -Math.PI) theta += 2.0*Math.PI;
+  theta *= sn;
+  return {
+    nx: Math.floor(ra*Math.sin(theta) + XO + 0.5),
+    ny: Math.floor(ro - ra*Math.cos(theta) + YO + 0.5)
+  };
+}
+
+document.getElementById("gps-btn").addEventListener("click", () => {
+  if (!navigator.geolocation){ alert("위치 정보를 지원하지 않는 브라우저입니다."); return; }
+  document.getElementById("status").textContent = "위치 확인 중...";
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const { nx, ny } = latLonToGrid(pos.coords.latitude, pos.coords.longitude);
+      currentRegion = { name: "내 위치", nx, ny };
+      saveLastRegion(currentRegion);
+      loadWeather();
+    },
+    (err) => { document.getElementById("status").textContent = "위치 실패: " + err.message; }
+  );
+});
+
+function saveLastRegion(region){
+  try { localStorage.setItem("weather_last_region", JSON.stringify(region)); }
+  catch(e){ /* localStorage 사용 불가 시 조용히 무시 */ }
+}
+
+if (!isLocked){
+  try {
+    const saved = JSON.parse(localStorage.getItem("weather_last_region"));
+    if (saved && saved.nx && saved.ny){
+      currentRegion = saved;
+      const idx = REGIONS.findIndex(r => r.nx === saved.nx && r.ny === saved.ny);
+      if (idx >= 0) select.value = idx;
+    }
+  } catch(e){ /* 저장된 값 없음 */ }
+}
+
+async function loadWeather(){
+  const region = currentRegion;
+  document.getElementById("loc-name").textContent = region.name;
+  document.getElementById("status").textContent = "불러오는 중...";
+  document.getElementById("status").className = "status";
+
+  try {
+    const ncstTime = getNcstBaseTime();
+    const ncstItems = await callApi("getUltraSrtNcst", {
+      numOfRows: 20, nx: region.nx, ny: region.ny,
+      base_date: ncstTime.base_date, base_time: ncstTime.base_time
+    });
+    const readings = {};
+    ncstItems.forEach(it => { readings[it.category] = it.obsrValue; });
+
+    const vilTime = getVilageBaseTime();
+    const vilItems = await callApi("getVilageFcst", {
+      numOfRows: 60, nx: region.nx, ny: region.ny,
+      base_date: vilTime.base_date, base_time: vilTime.base_time
+    });
+    const skyItem = vilItems.find(it => it.category === "SKY");
+
+    if (readings["T1H"] === undefined){
+      throw new Error("기온(T1H) 값이 응답에 없습니다 — 좌표(nx/ny)가 격자 범위를 벗어났을 수 있습니다");
+    }
+
+    const temp = readings["T1H"];
+    const pty = readings["PTY"] ?? "0";
+    const sky = skyItem ? skyItem.fcstValue : "1";
+
+    document.getElementById("icon").textContent = skyIcon(sky, pty);
+    document.getElementById("temp").innerHTML = `${temp}<span>°C</span>`;
+    document.getElementById("desc").textContent = skyDesc(sky, pty);
+    document.getElementById("status").textContent = "";
+  } catch(err){
+    document.getElementById("status").textContent = "오류: " + err.message;
+    document.getElementById("status").className = "status err";
+    console.error(err);
+  }
+}
+
+select.addEventListener("change", () => {
+  currentRegion = REGIONS[Number(select.value)];
+  saveLastRegion(currentRegion);
+  loadWeather();
+});
+document.getElementById("refresh-btn").addEventListener("click", loadWeather);
+loadWeather();
+</script>
+</body>
+</html>
